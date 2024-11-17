@@ -1,6 +1,22 @@
 #include <Arduino_LSM9DS1.h>
 #include <SPI.h>
 #include <SD.h>
+#include <ArduinoBLE.h>
+
+
+// BLE Service and Characteristics
+BLEService imuService("180A"); // Custom service UUID
+BLEFloatCharacteristic gyroCharacteristicX("2A00", BLERead | BLENotify);
+BLEFloatCharacteristic gyroCharacteristicY("2A01", BLERead | BLENotify);
+BLEFloatCharacteristic gyroCharacteristicZ("2A02", BLERead | BLENotify);
+
+BLEFloatCharacteristic accCharacteristicX("2A03", BLERead | BLENotify);
+BLEFloatCharacteristic accCharacteristicY("2A04", BLERead | BLENotify);
+BLEFloatCharacteristic accCharacteristicZ("2A05", BLERead | BLENotify);
+
+BLEFloatCharacteristic magCharacteristicX("2A06", BLERead | BLENotify);
+BLEFloatCharacteristic magCharacteristicY("2A07", BLERead | BLENotify);
+BLEFloatCharacteristic magCharacteristicZ("2A08", BLERead | BLENotify);
 
 // Define LED pins
 #define LEDR 2
@@ -56,9 +72,56 @@ void setup() {
     while (1);
   }
   Serial.println("SD card initialized!");
+
+  // Initialize BLE
+  if (!BLE.begin()) {
+    Serial.println("Starting Bluetooth failed!");
+    
+    // RED LED to indicate error
+    digitalWrite(LEDR, LOW);
+    digitalWrite(LEDG, HIGH);
+    digitalWrite(LEDB, HIGH);
+    while (1);
+  }
+
+  // Set BLE device name and services
+  BLE.setLocalName("Nano33BLE_IMU");
+  BLE.setAdvertisedService(imuService);
+  imuService.addCharacteristic(gyroCharacteristicX);
+  imuService.addCharacteristic(gyroCharacteristicY);
+  imuService.addCharacteristic(gyroCharacteristicZ);
+
+  imuService.addCharacteristic(accCharacteristicX);
+  imuService.addCharacteristic(accCharacteristicY);
+  imuService.addCharacteristic(accCharacteristicZ);
+
+  imuService.addCharacteristic(magCharacteristicX);
+  imuService.addCharacteristic(magCharacteristicY);
+  imuService.addCharacteristic(magCharacteristicZ);
+  BLE.addService(imuService);
+
+  // Start advertising BLE
+  BLE.advertise();
+  Serial.println("BLE device is now advertising...");
+
+  // GREEN LED to indicate ready state
+  digitalWrite(LEDR, HIGH);
+  digitalWrite(LEDG, LOW);
+  delay(1000);
+  digitalWrite(LEDB, HIGH);
+}
 }
 
 void loop() {
+
+  // Wait for a central device to connect
+  BLEDevice central = BLE.central();
+  if (central) {
+    Serial.print("Connected to central: ");
+    Serial.println(central.address());
+
+    while (central.connected()){
+
   // Variable to store test file number
   int test_number = 1;
   String filename = "test_" + String(test_number) + ".txt";
@@ -103,6 +166,11 @@ void loop() {
       Serial.print(gy);
       Serial.print(" Z: ");
       Serial.println(gz);
+
+      // Update BLE characteristics
+      gyroCharacteristicX.writeValue(gx);
+      gyroCharacteristicY.writeValue(gy);
+      gyroCharacteristicZ.writeValue(gz);
     }
 
     if (IMU.accelerationAvailable()) {
@@ -121,6 +189,11 @@ void loop() {
       Serial.print(ay);
       Serial.print(" Z: ");
       Serial.println(az);
+      
+      // Update BLE characteristics
+      accCharacteristicX.writeValue(ax);
+      accCharacteristicY.writeValue(ay);
+      accCharacteristicZ.writeValue(az);
     }
 
     if (IMU.magneticFieldAvailable()) {
@@ -138,9 +211,16 @@ void loop() {
       Serial.print(my);
       Serial.print(" Z: ");
       Serial.println(mz);
+
+      // Update BLE characteristics
+      magCharacteristicX.writeValue(mx);
+      magCharacteristicY.writeValue(my);
+      magCharacteristicZ.writeValue(mz);
     }
 
     delay(100);
+  }
+    Serial.println("Disconnected from central.");
   }
 
   // Close the file
