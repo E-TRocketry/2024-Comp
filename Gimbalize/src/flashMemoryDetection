@@ -1,0 +1,87 @@
+#include <Wire.h>
+#include "Adafruit_MPU6050.h" // imu library
+
+Adafruit_MPU6050 mpu; //replace with needed imu library
+
+extern "C" char* sbrk(int incr); // To get the heap pointer
+
+const int totalSRAM = 32768; // 32 KB for Arduino MKR Zero
+char* buffer = nullptr;      // Pointer to a dynamically allocated buffer
+int bufferSize = 0;          // Size of the allocated buffer
+
+void monitorSRAM() {
+    char stackTop;             // Current stack pointer
+    char* heapEnd = sbrk(0);   // Current heap pointer
+    int usedSRAM = totalSRAM - (&stackTop - heapEnd);
+    int freeSRAM = &stackTop - heapEnd;
+
+    // Print results to Serial
+    Serial.print("Buffer Size: ");
+    Serial.print(bufferSize);
+    Serial.println(" bytes");
+
+    Serial.print("Used SRAM: ");
+    Serial.print(usedSRAM);
+    Serial.println(" bytes");
+
+    Serial.print("Free SRAM: ");
+    Serial.print(freeSRAM);
+    Serial.println(" bytes");
+
+    Serial.print("SRAM Usage: ");
+    Serial.print((float(usedSRAM) / totalSRAM) * 100, 2);
+    Serial.println("%");
+    Serial.println("--------------------");
+}
+
+
+void memoryAllocationLoop() {
+    // Gradually allocate more memory
+    const int allocationStep = sizeof(float) * 6; // Allocate space for 6 float values (Accel + Gyro)
+
+    // Allocate additional memory for the buffer
+    char* newBuffer = (char*)realloc(buffer, bufferSize + allocationStep);
+
+    // Check if allocation was successful
+    if (newBuffer) {
+        buffer = newBuffer;                      // Update buffer pointer
+        bufferSize += allocationStep;            // Increase buffer size
+
+        // Read MPU-6050 data
+        sensors_event_t a, g, temp;
+        mpu.getEvent(&a, &g, &temp);                           // Update MPU readings
+        float ax = a.acceleration.x;
+        float ay = a.acceleration.y;
+        float az = a.acceleration.z;
+        float gx = g.gyro.x;
+        float gy = g.gyro.y;
+        float gz = g.gyro.z;
+
+        // Store data in the buffer
+        float* floatBuffer = (float*)(buffer + bufferSize - allocationStep);
+        floatBuffer[0] = ax;
+        floatBuffer[1] = ay;
+        floatBuffer[2] = az;
+        floatBuffer[3] = gx;
+        floatBuffer[4] = gy;
+        floatBuffer[5] = gz;
+
+        // Print stored data
+        Serial.println("Stored MPU-6050 Data:");
+        for (int i = 0; i < 6; i++) {
+            Serial.print("Data[");
+            Serial.print(i);
+            Serial.print("]: ");
+            Serial.println(floatBuffer[i]);
+        }
+    } else {
+        Serial.println("Memory allocation failed!");
+        while (true); // Halt if out of memory
+    }
+
+    // Monitor SRAM usage after each allocation
+    monitorSRAM();
+
+    // Slow down to allow easy monitoring
+    delay(1000); // 1-second delay between allocations
+}

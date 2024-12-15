@@ -1,6 +1,9 @@
 #include <Wire.h>
-#include <Adafruit_MPU6050.h>
-#include <Adafruit_BMP085.h>
+#include <SPI.h>
+#include <MKRIMU.h>
+#include <Adafruit_BMP3XX.h>
+#include <SD.h>
+
 
 // Create sensor objects
 Adafruit_MPU6050 mpu;

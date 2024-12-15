@@ -1,23 +1,26 @@
-#include <Arduino_LSM9DS1.h>
+#include <MKRIMU.h>
 #include <SPI.h>
 #include <SD.h>
+#include <Wire.h>
+#include <Adafruit_BMP085.h>
 
 // Define LED pins
-#define LEDR 2
-#define LEDG 3
-#define LEDB 4
+#define STATUSLED 13
 
 // Define SD card pin
 #define SD_PIN 10
+
+// Define barometer settings
+#define BMP_SDA A4 // Adjust for your microcontroller
+#define BMP_SCL D12
+#define SEALEVELPRESSURE_HPA (1013.25)
 
 // Declare file for SD operations
 File myFile;
 
 void setup() {
   // Initialize pins as outputs
-  pinMode(LEDR, OUTPUT);
-  pinMode(LEDG, OUTPUT);
-  pinMode(LEDB, OUTPUT);
+  pinMode(STATUSLED, OUTPUT);
 
   // Start serial communication
   Serial.begin(9600);
@@ -29,44 +32,52 @@ void setup() {
   if (!IMU.begin()) {
     Serial.println("Failed to initialize IMU!");
 
-    // RED LED to indicate error
-    digitalWrite(LEDR, LOW);
-    digitalWrite(LEDG, HIGH);
-    digitalWrite(LEDB, HIGH);
-    delay(1000);
-
-    // RED LED stays on
-    digitalWrite(LEDR, HIGH);
+    digitalWrite(STATUSLED, HIGH);
+    delay(100)
+    digitalWrite(STATUSLED, LOW);
     while (1);
   }
-  Serial.println("IMU initialized!");
+  Serial.print("Gyroscope sample rate = ");
+  Serial.print(IMU.gyroscopeSampleRate());
+  Serial.println(" Hz");
+  Serial.println();
+  Serial.println("Gyroscope in degrees/second");
+  Serial.println("X\tY\tZ");
 
   // Initialize SD card
   if (!SD.begin(SD_PIN)) {
     Serial.println("SD initialization failed!");
 
-    // RED LED to indicate error
-    digitalWrite(LEDR, LOW);
-    digitalWrite(LEDG, HIGH);
-    digitalWrite(LEDB, HIGH);
-    delay(1000);
+   digitalWrite(STATUSLED, HIGH);
+   delay(500);
+   digitalWrite(STATUSLED, LOW);
 
     // RED LED stays on
     digitalWrite(LEDR, HIGH);
     while (1);
   }
   Serial.println("SD card initialized!");
+
+  // Initialize BMP
+  if (!bmp.begin_I2C()) {   // hardware I2C mode, can pass in address & alt Wire
+    Serial.println("BMP intialiation failed!");
+    while (1);
+  }
+  Serial.println("BMP intiialized!");
+  bmp.setOutputDataRate(BMP3_ODR_50_HZ);
 }
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void loop() {
   // Variable to store test file number
   int test_number = 1;
-  String filename = "test_" + String(test_number) + ".txt";
+  String filename = "Ground_test_" + String(test_number) + ".txt";
 
   // Increment file number if the file already exists
   while (SD.exists(filename)) {
     test_number++;
-    filename = "test_" + String(test_number) + ".txt";
+    filename = "Ground_test_" + String(test_number) + ".txt";
   }
 
   // Open file for writing
@@ -77,13 +88,14 @@ void loop() {
   }
 
   // Write header to the file
-  myFile.println("Gyro_X, Gyro_Y, Gyro_Z, Acc_X, Acc_Y, Acc_Z, Mag_X, Mag_Y, Mag_Z");
-  Serial.println("Gyro_X, Gyro_Y, Gyro_Z, Acc_X, Acc_Y, Acc_Z, Mag_X, Mag_Y, Mag_Z");
+  myFile.println("Gyro_X, Gyro_Y, Gyro_Z, Acc_X, Acc_Y, Acc_Z, Mag_X, Mag_Y, Mag_Z, BMP_Temp, BMP_Preasure, BMP_Alt");
+  Serial.println("Gyro_X, Gyro_Y, Gyro_Z, Acc_X, Acc_Y, Acc_Z, Mag_X, Mag_Y, Mag_Z, BMP_Temp, BMP_Preasure, BMP_Alt");
 
   // Declare variables to hold sensor data
   float gx, gy, gz;
   float ax, ay, az;
   float mx, my, mz;
+  
 
   // Read data from IMU and write to the file
   for (int i = 0; i < 400; i++) {
@@ -140,21 +152,27 @@ void loop() {
       Serial.println(mz);
     }
 
-    delay(100);
+    if(bmp.performReading()) {
+      myFile.print(bmp.temperature);
+      myFile.print(", ");
+      myFile.println(bmp.preasure/100.0);
+      myFile.print(", ");
+      myFile.print(bmp.readAltitude(SEALEVELPRESSURE_HPA));
+
+      // Print into Serial Monitor
+      Serial.print("Temperature: ");
+      Serial.print(bmp.temperature);
+      Serial.print("BMP Preasure:");
+      Serial.println(bmp.preasure/100.0);
+      Serial.print("Altitude Estimate: ");
+      Serialln.print(bmp.readAltitude(SEALEVELPRESSURE_HPA));
+    }
   }
+
+
 
   // Close the file
   myFile.close();
   Serial.println("Data saved successfully!");
 
-  // GREEN LED to indicate success
-  digitalWrite(LEDR, HIGH);
-  digitalWrite(LEDG, LOW);
-  digitalWrite(LEDB, HIGH);
-  delay(5000);
-
-  // Turn off LEDs
-  digitalWrite(LEDR, HIGH);
-  digitalWrite(LEDG, HIGH);
-  digitalWrite(LEDB, HIGH);
 }
